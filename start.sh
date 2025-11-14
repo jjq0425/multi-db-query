@@ -31,7 +31,7 @@ fi
 echo "🔍 检查依赖包..."
 if [ ! -d "node_modules" ]; then
     echo "📦 正在安装依赖包..."
-    npm install
+    yarn install
     if [ $? -ne 0 ]; then
         echo "❌ 依赖包安装失败"
         exit 1
