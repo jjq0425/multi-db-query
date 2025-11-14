@@ -1,4 +1,6 @@
 {
+  "serverPort": 3000,
+  "schedulerIntervalSeconds": 30,
   "databaseConfigs": [
     {
       "id": "db1",
@@ -21,5 +23,6 @@
       "name": "提交量查询",
       "sql": "SELECT \n    section,\n    COUNT(*) as count\nFROM record\nGROUP BY section\nORDER BY count DESC;"
     }
-  ]
+  ],
+  "scheduledTasks":[]
 }

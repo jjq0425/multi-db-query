@@ -37,7 +37,8 @@ class DatabaseQueryBot {
     this.activeQueries = new Map();
     this.config = null;
 
-    this.initialize();
+    // 初始化并保存初始化完成的 Promise，便于 start 等待配置和调度器就绪
+    this._initialized = this.initialize();
   }
 
   async initialize() {
@@ -52,17 +53,25 @@ class DatabaseQueryBot {
     try {
       const configPath = path.join(__dirname, 'config.json');
       const configData = await fs.readFile(configPath, 'utf8');
-      this.config = JSON.parse(configData);
+      const parsed = JSON.parse(configData);
+      // 合并默认配置，保证新增的配置项有默认值
+      this.config = { ...this.getDefaultConfig(), ...parsed };
       logger.info('配置文件加载成功');
     } catch (error) {
       logger.error('配置文件加载失败，使用默认配置', error);
       this.config = this.getDefaultConfig();
       await this.saveConfig();
     }
+    // 启动调度器（或在 initialize 后启动）
+    this._initScheduler();
   }
 
   getDefaultConfig() {
     return {
+      // 本服务监听端口
+      serverPort: 3000,
+      // 调度器检查间隔（秒）
+      schedulerIntervalSeconds: 30,
       databaseConfigs: [
 
       ],
@@ -89,6 +98,9 @@ GROUP BY section
 ORDER BY count DESC;`
         }
       ]
+      ,
+      // 定时任务
+      scheduledTasks: []
     };
   }
 
@@ -106,6 +118,177 @@ ORDER BY count DESC;`
     this.app.use(cors());
     this.app.use(express.json());
     this.app.use(express.urlencoded({ extended: true }));
+  }
+
+  // 调度器初始化
+  _initScheduler() {
+    // 从配置读取调度间隔（秒），默认 30 秒
+    const intervalSeconds = (this.config && Number(this.config.schedulerIntervalSeconds)) || 30;
+    if (this._schedulerTimer) clearInterval(this._schedulerTimer);
+    this._schedulerTimer = setInterval(() => {
+      try {
+        this.checkScheduledTasks();
+      } catch (e) {
+        logger.error('调度器检查异常', e);
+      }
+    }, intervalSeconds * 1000);
+    logger.info(`任务调度器已启动，每${intervalSeconds}秒检查一次`);
+  }
+
+  // 检查并触发定时任务
+  async checkScheduledTasks() {
+    console.log('高雅检查定时任务中');
+    if (!this.config || !Array.isArray(this.config.scheduledTasks)) return;
+
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    const current = `${hh}:${mm}`; // 格式 HH:MM
+
+    for (const task of this.config.scheduledTasks) {
+      try {
+        if (task.disabled) continue;
+        // task.scheduleTimes: array of "HH:MM" strings
+        const times = Array.isArray(task.scheduleTimes) ? task.scheduleTimes : (task.scheduleTime ? [task.scheduleTime] : []);
+
+        if (!times.includes(current)) continue;
+
+        // 防止同一分钟重复触发：记录 lastRunMinute
+        if (task._lastRunMinute === current) continue;
+        task._lastRunMinute = current;
+
+        logger.info(`触发定时任务: ${task.name} (${task.id || 'no-id'}) at ${current}`);
+        // 执行任务（不阻塞其他任务）
+        this.executeScheduledTask(task).catch(err => logger.error('执行定时任务失败', err));
+      } catch (err) {
+        logger.error('单个任务检查失败', err);
+      }
+    }
+  }
+
+  // 执行单个定时任务
+  async executeScheduledTask(task) {
+    // task: { id, name, scheduleTimes, sql, dbIds, feishuWebhook }
+    const taskId = `task_${task.id || uuidv4()}`;
+    const dbIds = task.dbIds || [];
+    const databases = this.config.databaseConfigs.filter(db => dbIds.includes(db.id) && db.enabled);
+    if (databases.length === 0) {
+      logger.warn(`任务 ${task.name} 没有可用数据库，跳过`);
+      return null;
+    }
+
+    const queryRecord = {
+      id: taskId,
+      status: 'running',
+      startTime: new Date().toISOString(),
+      databases: databases.map(d => d.id),
+      results: {}
+    };
+    databases.forEach(db => {
+      queryRecord.results[db.id] = {
+        status: 'running',
+        database: db.name,
+        dbInfo: db,
+        databaseId: db.id,
+        startTime: new Date().toISOString()
+      };
+    });
+
+    // 立即登记为活动查询
+    this.activeQueries.set(queryRecord.id, queryRecord);
+
+    // 异步执行任务，不阻塞调用者；在内部完成后更新状态并发送通知
+    (async () => {
+      try {
+        const promises = databases.map(async (db) => {
+          const result = await this.executeSingleQueryWithSQL(db, task.sql || this.config.sqlQuery);
+          queryRecord.results[db.id] = result;
+          return result;
+        });
+
+        await Promise.all(promises);
+
+        queryRecord.status = 'completed';
+        queryRecord.endTime = new Date().toISOString();
+
+        // 发送任务级飞书通知（优先使用任务指定 webhook，否则使用全局 webhook）
+        const webhook = task.feishuWebhook && task.feishuWebhook.length > 0 ? task.feishuWebhook : (this.config.feishuWebhook || '');
+        if (webhook) {
+          await this.sendFeishuNotificationToWebhookSchedual(queryRecord, webhook, task.name);
+        }
+
+      } catch (error) {
+        queryRecord.status = 'failed';
+        queryRecord.error = error.message;
+        queryRecord.endTime = new Date().toISOString();
+        logger.error(`定时任务执行失败: ${task.name}`, error);
+      } finally {
+        // 在活动查询中保留一段时间以便审计，然后清理
+        setTimeout(() => this.activeQueries.delete(queryRecord.id), 5 * 60 * 1000);
+      }
+    })();
+
+    // 返回立即可用的 query id
+    return queryRecord.id;
+  }
+
+  // 使用指定 SQL 执行单数据库查询（不会修改全局 config.sqlQuery）
+  async executeSingleQueryWithSQL(dbConfig, sql) {
+    const startTime = new Date();
+    let connection;
+    try {
+      logger.info(`开始执行定时任务查询: ${dbConfig.name}`);
+      connection = await mysql.createConnection({
+        host: dbConfig.host,
+        port: dbConfig.port,
+        user: dbConfig.user,
+        password: dbConfig.password,
+        database: dbConfig.database,
+        connectTimeout: 30000,
+        timeout: this.config.queryTimeout
+      });
+
+      const [rows] = await connection.execute(sql);
+      const endTime = new Date();
+      return {
+        status: 'success',
+        database: dbConfig.name,
+        databaseId: dbConfig.id,
+        dbInfo: dbConfig,
+        startTime: startTime.toISOString(),
+        endTime: endTime.toISOString(),
+        executionTime: endTime - startTime,
+        results: rows,
+        rowCount: rows.length
+      };
+    } catch (error) {
+      const endTime = new Date();
+      logger.error(`定时任务查询失败: ${dbConfig.name}`, error);
+      return {
+        status: 'failed',
+        database: dbConfig.name,
+        databaseId: dbConfig.id,
+        dbInfo: dbConfig,
+        startTime: startTime.toISOString(),
+        endTime: endTime.toISOString(),
+        executionTime: endTime - startTime,
+        error: error.message
+      };
+    } finally {
+      if (connection) {
+        try { await connection.end(); } catch (e) { logger.error('关闭连接失败', e); }
+      }
+    }
+  }
+
+  // 针对定时任务发送飞书通知（使用指定 webhook）
+  async sendFeishuNotificationToWebhookSchedual(queryRecord, webhookUrl, taskName) {
+    try {
+      console.log('发送飞书通知', queryRecord);
+      this.sendFeishuNotification(queryRecord, webhookUrl, true);
+    } catch (error) {
+      logger.error('任务通知发送异常', error);
+    }
   }
 
   setupRoutes() {
@@ -222,6 +405,36 @@ ORDER BY count DESC;`
       } catch (error) {
         logger.error('清空日志失败', error);
         res.status(500).json({ success: false, message: '清空日志失败', error: error.message });
+      }
+    });
+
+    // 立即触发指定索引的定时任务（前端传 index 或者 taskId）
+    this.app.post('/api/run-scheduled', async (req, res) => {
+      try {
+        const { index, taskId } = req.body || {};
+        let task = null;
+        if (typeof index === 'number') {
+          if (!Array.isArray(this.config.scheduledTasks) || index < 0 || index >= this.config.scheduledTasks.length) {
+            return res.status(400).json({ success: false, message: '无效的任务索引' });
+          }
+          task = this.config.scheduledTasks[index];
+        } else if (taskId) {
+          task = (this.config.scheduledTasks || []).find(t => t.id === taskId);
+          if (!task) return res.status(404).json({ success: false, message: '未找到指定任务' });
+        } else {
+          return res.status(400).json({ success: false, message: '请提供 index 或 taskId' });
+        }
+
+        if (!task) return res.status(404).json({ success: false, message: '未找到任务' });
+        if (task.disabled) return res.status(400).json({ success: false, message: '任务已禁用' });
+
+        const queryId = await this.executeScheduledTask(task);
+        if (!queryId) return res.status(500).json({ success: false, message: '任务触发失败' });
+
+        res.json({ success: true, queryId });
+      } catch (error) {
+        logger.error('触发定时任务异常', error);
+        res.status(500).json({ success: false, message: '触发定时任务失败', error: error.message });
       }
     });
   }
@@ -401,7 +614,7 @@ ORDER BY count DESC;`
     });
   }
 
-  async sendFeishuNotification(queryRecord) {
+  async sendFeishuNotification(queryRecord, webhook = this.config.feishuWebhook, isScheduledTask = false) {
     try {
       console.log('发送飞书通知', queryRecord);
       var meesage = '';
@@ -481,10 +694,14 @@ ORDER BY count DESC;`
     }
   }
 
-  start(port = 3000) {
-    this.server.listen(port, () => {
-      logger.info(`服务器启动成功，监听端口 ${port}`);
-      logger.info('访问 http://localhost:3000 查看网页界面');
+  async start(port) {
+    // 等待初始化完成（配置加载、调度器启动等）
+    if (this._initialized) await this._initialized;
+
+    const listenPort = port || (this.config && this.config.serverPort) || 3000;
+    this.server.listen(listenPort, () => {
+      logger.info(`服务器启动成功，监听端口 ${listenPort}`);
+      logger.info(`访问 http://localhost:${listenPort} 查看网页界面`);
     });
 
     this.server.on('error', (error) => {
@@ -495,4 +712,4 @@ ORDER BY count DESC;`
 
 // 创建并启动应用
 const bot = new DatabaseQueryBot();
-bot.start(3000);
+bot.start();

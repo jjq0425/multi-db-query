@@ -330,11 +330,28 @@
                     </div>
                 </div>
 
+                <!-- 定时任务配置 -->
+                <div class="mt-8">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-medium text-gray-900">
+                            <i class="fa fa-clock-o text-indigo-500 mr-2"></i>定时任务
+                        </h3>
+                        <button onclick="openScheduledTaskModal('add')"
+                            class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
+                            <i class="fa fa-plus mr-2"></i>添加任务
+                        </button>
+                    </div>
+
+                    <div id="scheduledTasksContainer" class="space-y-4">
+                        <!-- 定时任务列表由 JS 渲染 -->
+                    </div>
+                </div>
+
                 <div class="mt-8 flex justify-end space-x-3">
-                    <button onclick="resetConfig()"
+                    <!-- <button onclick="resetConfig()"
                         class="px-6 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
                         <i class="fa fa-bullseye mr-2"></i>重置默认
-                    </button>
+                    </button> -->
                     <button id="saveConfigBtn" onclick="saveConfig()"
                         class="px-6 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 transition-colors">
                         <i class="fa fa-save mr-2"></i>保存配置
@@ -488,6 +505,62 @@
                     <button onclick="closeAggregateModal()"
                         class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">关闭</button>
                 </div>
+            </div>
+        </div>
+    </div>
+    <!-- 定时任务 模态框 -->
+    <div id="scheduledTaskModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4">
+            <div class="p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold text-gray-900" id="scheduledModalTitle">添加定时任务</h3>
+                    <button onclick="closeScheduledTaskModal()" class="text-gray-400 hover:text-gray-600">
+                        <i class="fa fa-times"></i>
+                    </button>
+                </div>
+
+                <form id="scheduledTaskForm">
+                    <input type="hidden" id="scheduledTaskId">
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">任务名称</label>
+                        <input id="scheduledTaskName" type="text" required
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">触发时间（多个用逗号分隔，格式 HH:MM，例如
+                            08:00,10:00。需要确保必须是两位数:两位数）</label>
+                        <input id="scheduledTaskTimes" type="text" placeholder="08:00,10:00"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">选择数据库（Ctrl/Command 多选）</label>
+                        <select id="scheduledTaskDbIds" multiple
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg h-32"></select>
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">任务 SQL（覆盖默认 SQL）</label>
+                        <textarea id="scheduledTaskSql" rows="6"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg font-mono text-sm"></textarea>
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">飞书 Webhook（可选，若不填使用全局
+                            webhook）</label>
+                        <input id="scheduledTaskWebhook" type="text"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    <div class="flex items-center mb-4">
+                        <input id="scheduledTaskDisabled" type="checkbox" class="h-4 w-4">
+                        <label for="scheduledTaskDisabled" class="ml-2 text-sm text-gray-700">禁用该任务</label>
+                    </div>
+
+                    <div class="flex justify-end space-x-3">
+                        <button type="button" onclick="deleteScheduledTaskConfirm()" id="deleteScheduledTaskBtn"
+                            class="px-4 py-2 bg-red-100 text-red-700 rounded-lg hidden">删除任务</button>
+                        <button type="submit" class="px-4 py-2 bg-primary text-white rounded-lg">保存任务</button>
+                        <button type="button" onclick="closeScheduledTaskModal()"
+                            class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg">取消</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
@@ -1336,6 +1409,8 @@
             document.getElementById('maxConnections').value = config.maxConnections || 5;
             // 渲染 SQL 模板按钮
             renderSQLTemplates();
+            // 渲染定时任务
+            renderScheduledTasks();
         }
 
         // 保存配置
@@ -1370,6 +1445,7 @@
                     renderDatabaseConfigs();
                     renderDatabaseSelection();
                     renderSQLTemplates();
+                    renderScheduledTasks();
 
                     if (showNotificationBool) {
                         showNotification('配置保存成功', 'success');
@@ -1648,6 +1724,159 @@
                 saveBtn.innerHTML = originalText;
             }
         });
+
+        // ---------- 定时任务前端逻辑 ----------
+        function renderScheduledTasks() {
+            const container = document.getElementById('scheduledTasksContainer');
+            if (!container) return;
+            container.innerHTML = '';
+            const tasks = (config && Array.isArray(config.scheduledTasks)) ? config.scheduledTasks : [];
+
+            if (tasks.length === 0) {
+                container.innerHTML = `<div class="text-sm text-gray-500 py-6 text-center">暂无定时任务</div>`;
+                return;
+            }
+
+            tasks.forEach((task, idx) => {
+                const card = document.createElement('div');
+                card.className = 'bg-gray-50 p-4 rounded-lg border flex items-center justify-between';
+                const left = document.createElement('div');
+                left.innerHTML = `
+                    <div class="font-medium text-gray-900">${task.name || '无名任务'}</div>
+                    <div class="text-sm text-gray-600">时间: ${Array.isArray(task.scheduleTimes) ? task.scheduleTimes.join(',') : (task.scheduleTime || '')}</div>
+                    <div class="text-sm text-gray-600">数据库: ${(task.dbIds || []).map(id => (config.databaseConfigs.find(d => d.id === id) || { name: id }).name).join(', ')}</div>
+                `;
+                const right = document.createElement('div');
+                right.innerHTML = `
+                    <button class="px-3 py-1 mr-2 bg-primary text-white rounded" onclick="openScheduledTaskModal('edit', ${idx})">编辑</button>
+                    <button class="px-3 py-1 mr-2 bg-green-500 text-white rounded" onclick="runScheduledTask(${idx})">立即执行</button>
+                    <button class="px-3 py-1 bg-red-100 text-red-700 rounded" onclick="deleteScheduledTask(${idx})">删除</button>
+                `;
+                card.appendChild(left);
+                card.appendChild(right);
+                container.appendChild(card);
+            });
+        }
+
+        // 前端触发立即执行定时任务
+        async function runScheduledTask(index) {
+            if (!confirm('确定立即执行该定时任务吗？')) return;
+
+            try {
+                const resp = await fetch('/api/run-scheduled', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ index })
+                });
+                const data = await resp.json();
+                if (!data.success) {
+                    showNotification(data.message || '触发任务失败', 'error');
+                    return;
+                }
+
+                const qid = data.queryId;
+                showNotification('任务已触发，Query ID: ' + qid, 'success');
+
+                // 展示查询面板并订阅结果
+                currentQueryId = qid;
+                showQueryResults();
+                subscribeToQuery(qid);
+                addLogEntry(`已触发定时任务，Query ID: ${qid}`);
+
+            } catch (err) {
+                console.error('立即执行任务失败', err);
+                showNotification('立即执行任务失败', 'error');
+            }
+        }
+
+        function openScheduledTaskModal(mode, index) {
+            const modal = document.getElementById('scheduledTaskModal');
+            const form = document.getElementById('scheduledTaskForm');
+            document.getElementById('scheduledTaskForm').reset();
+            document.getElementById('deleteScheduledTaskBtn').classList.add('hidden');
+            document.getElementById('scheduledTaskId').value = '';
+            document.getElementById('scheduledModalTitle').textContent = mode === 'add' ? '添加定时任务' : '编辑定时任务';
+
+            // 填充数据库下拉
+            const dbSelect = document.getElementById('scheduledTaskDbIds');
+            dbSelect.innerHTML = '';
+            if (config && Array.isArray(config.databaseConfigs)) {
+                config.databaseConfigs.forEach(db => {
+                    const opt = document.createElement('option');
+                    opt.value = db.id;
+                    opt.textContent = db.name;
+                    dbSelect.appendChild(opt);
+                });
+            }
+
+            if (mode === 'edit') {
+                const task = config.scheduledTasks && config.scheduledTasks[index];
+                if (!task) return;
+                document.getElementById('scheduledTaskId').value = index;
+                document.getElementById('scheduledTaskName').value = task.name || '';
+                document.getElementById('scheduledTaskTimes').value = Array.isArray(task.scheduleTimes) ? task.scheduleTimes.join(',') : (task.scheduleTime || '');
+                document.getElementById('scheduledTaskSql').value = task.sql || '';
+                document.getElementById('scheduledTaskWebhook').value = task.feishuWebhook || '';
+                document.getElementById('scheduledTaskDisabled').checked = !!task.disabled;
+                // select dbs
+                const ids = task.dbIds || [];
+                Array.from(dbSelect.options).forEach(opt => { opt.selected = ids.includes(opt.value); });
+                document.getElementById('deleteScheduledTaskBtn').classList.remove('hidden');
+            }
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeScheduledTaskModal() {
+            const modal = document.getElementById('scheduledTaskModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        // 表单提交 - 保存任务到 config.scheduledTasks 并调用 saveConfig()
+        document.getElementById('scheduledTaskForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const idx = document.getElementById('scheduledTaskId').value;
+            const name = document.getElementById('scheduledTaskName').value.trim();
+            const timesRaw = document.getElementById('scheduledTaskTimes').value.trim();
+            const sql = document.getElementById('scheduledTaskSql').value.trim();
+            const webhook = document.getElementById('scheduledTaskWebhook').value.trim();
+            const disabled = document.getElementById('scheduledTaskDisabled').checked;
+            const dbSelect = document.getElementById('scheduledTaskDbIds');
+            const dbIds = Array.from(dbSelect.selectedOptions).map(o => o.value);
+
+            const times = timesRaw.split(',').map(s => s.trim()).filter(Boolean);
+
+            if (!config.scheduledTasks) config.scheduledTasks = [];
+
+            const task = { id: `t_${Date.now()}`, name, scheduleTimes: times, dbIds, sql, feishuWebhook: webhook, disabled };
+
+            if (idx === '') {
+                config.scheduledTasks.push(task);
+            } else {
+                config.scheduledTasks[Number(idx)] = { ...config.scheduledTasks[Number(idx)], ...task };
+            }
+
+            await saveConfig();
+            renderScheduledTasks();
+            closeScheduledTaskModal();
+        });
+
+        function deleteScheduledTaskConfirm() {
+            if (!confirm('确定要删除该定时任务吗？')) return;
+            const idx = document.getElementById('scheduledTaskId').value;
+            if (idx === '') return;
+            deleteScheduledTask(Number(idx));
+            closeScheduledTaskModal();
+        }
+
+        async function deleteScheduledTask(index) {
+            if (!config.scheduledTasks) return;
+            config.scheduledTasks.splice(index, 1);
+            await saveConfig();
+            renderScheduledTasks();
+        }
 
         function deleteTemplateConfirm() {
             const id = document.getElementById('templateId').value;
