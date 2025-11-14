@@ -1,0 +1,25 @@
+{
+  "databaseConfigs": [
+    {
+      "id": "db1",
+      "name": "数据库1",
+      "host": "192.168.1.1",
+      "port": 3306,
+      "database": "db",
+      "user": "root",
+      "password": "",
+      "enabled": true
+    }
+  ],
+  "sqlQuery": "SELECT \n    section,\n    COUNT(*) as count\nFROM record\nGROUP BY section\nORDER BY count DESC;",
+  "feishuWebhook": "",
+  "queryTimeout": 600000,
+  "maxConnections": 5,
+  "sqlTemplates": [
+    {
+      "id": "tpl_1763127934192",
+      "name": "提交量查询",
+      "sql": "SELECT \n    section,\n    COUNT(*) as count\nFROM record\nGROUP BY section\nORDER BY count DESC;"
+    }
+  ]
+}

@@ -1,0 +1,1963 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>多数据库查询机器人</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#2563eb',
+                        secondary: '#64748b',
+                        success: '#10b981',
+                        warning: '#f59e0b',
+                        danger: '#ef4444',
+                        dark: '#1e293b',
+                        light: '#f8fafc'
+                    },
+                    fontFamily: {
+                        inter: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+
+    <style type="text/tailwindcss">
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .glass-effect {
+                backdrop-filter: blur(10px);
+                background: rgba(255, 255, 255, 0.1);
+            }
+            .gradient-bg {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            }
+            .card-hover {
+                transition: all 0.3s ease;
+            }
+            .card-hover:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            }
+        }
+    </style>
+</head>
+
+<body class="font-inter bg-gray-50 min-h-screen">
+    <!-- 顶部导航 -->
+    <nav class="bg-white shadow-lg border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0 flex items-center">
+                        <i class="fa fa-database text-primary text-2xl mr-3"></i>
+                        <h1 class="text-xl font-bold text-gray-900">多数据库查询机器人</h1>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button id="themeToggle" class="p-2 rounded-lg hover:bg-gray-100 transition-colors">
+                        <i class="fa fa-moon-o text-gray-600"></i>
+                    </button>
+                    <button id="clearLogsBtn" onclick="clearLogs()" title="清空日志文件"
+                        class="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors text-sm">
+                        <i class="fa fa-trash mr-1"></i>清空日志
+                    </button>
+                    <div class="text-sm text-gray-600">
+                        <span id="connectionStatus" class="inline-flex items-center">
+                            <span class="w-2 h-2 bg-gray-400 rounded-full mr-2"></span>
+                            未连接
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主内容区域 -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- 标签页导航 -->
+        <div class="mb-8">
+            <div class="flex border-b border-gray-200">
+                <button onclick="switchTab('query')" id="queryTab"
+                    class="tab-button px-6 py-3 border-b-2 border-primary text-primary font-medium">
+                    <i class="fa fa-play mr-2"></i>执行查询
+                </button>
+                <button onclick="switchTab('config')" id="configTab"
+                    class="tab-button px-6 py-3 border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                    <i class="fa fa-cogs mr-2"></i>配置管理
+                </button>
+                <!-- <button onclick="switchTab('history')" id="historyTab"
+                    class="tab-button px-6 py-3 border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                    <i class="fa fa-history mr-2"></i>查询历史
+                </button> -->
+            </div>
+        </div>
+
+        <!-- 执行查询标签页 -->
+        <div id="queryTabContent" class="tab-content">
+            <!-- 查询控制面板 -->
+            <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+                <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-6">
+                    <div class="mb-4 lg:mb-0">
+                        <h2 class="text-xl font-semibold text-gray-900 mb-2">查询控制</h2>
+                        <p class="text-gray-600">选择要查询的数据库并执行SQL查询</p>
+                    </div>
+                    <div class="flex space-x-3">
+                        <button onclick="loadDefaultQuery()"
+                            class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
+                            <i class="fa fa-bullseye mr-2"></i>加载默认查询
+                        </button>
+                        <button onclick="executeQuery()" id="executeBtn"
+                            class="px-6 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                            <i class="fa fa-play mr-2"></i>执行查询
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 数据库选择 -->
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-3">选择数据库</label>
+                    <div id="databaseSelection" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <!-- 数据库选择卡片将通过JavaScript动态生成 -->
+                    </div>
+                </div>
+
+                <!-- SQL编辑器 -->
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-3">SQL查询语句</label>
+                    <div class="relative">
+                        <textarea id="sqlEditor" rows="8"
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent font-mono text-sm resize-none"
+                            placeholder="请输入SQL查询语句..."></textarea>
+
+                        <!-- SQL 模板 区 -->
+                        <div class="mt-3">
+                            <div class="flex items-center justify-between mb-2">
+                                <label class="text-sm font-medium text-gray-700">SQL 模板</label>
+                                <button onclick="openTemplateModal('add')"
+                                    class="px-3 py-1 text-sm bg-gray-100 rounded hover:bg-gray-200">管理模板</button>
+                            </div>
+                            <div id="sqlTemplates" class="flex flex-wrap gap-2"></div>
+                        </div>
+                        <div class="absolute top-2 right-2 flex space-x-1">
+                            <button onclick="formatSQL()"
+                                class="p-1 bg-gray-100 rounded hover:bg-gray-200 text-gray-600" title="格式化SQL">
+                                <i class="fa fa-indent"></i>
+                            </button>
+                            <button onclick="clearSQL()" class="p-1 bg-gray-100 rounded hover:bg-gray-200 text-gray-600"
+                                title="清空">
+                                <i class="fa fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 查询状态和结果 -->
+            <div id="queryResults" class="hidden">
+                <!-- 查询状态 -->
+                <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-semibold text-gray-900">查询状态</h3>
+                        <div id="queryStatusBadge"
+                            class="px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
+                            执行中...
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-gray-900" id="totalDatabases">0</div>
+                            <div class="text-sm text-gray-600">总数据库</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-success" id="completedDatabases">0</div>
+                            <div class="text-sm text-gray-600">已完成</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-danger" id="failedDatabases">0</div>
+                            <div class="text-sm text-gray-600">已失败</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-primary" id="executionTime">0s</div>
+                            <div class="text-sm text-gray-600">执行时间</div>
+                        </div>
+                    </div>
+
+                    <!-- 进度条 -->
+                    <div class="mb-4">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm text-gray-600">整体进度</span>
+                            <span class="text-sm font-medium text-gray-900" id="progressPercentage">0%</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2">
+                            <div id="progressBar" class="bg-primary h-2 rounded-full transition-all duration-300"
+                                style="width: 0%"></div>
+                        </div>
+                    </div>
+
+                    <!-- 实时日志 -->
+                    <div class="border border-gray-200 rounded-lg">
+                        <div class="bg-gray-50 px-4 py-2 border-b border-gray-200">
+                            <span class="text-sm font-medium text-gray-700">实时日志</span>
+                        </div>
+                        <div id="queryLog" class="h-32 overflow-y-auto p-4 text-sm text-gray-600 font-mono"></div>
+                    </div>
+                </div>
+
+                <!-- 结果展示 -->
+                <div id="resultTabs" class="bg-white rounded-xl shadow-lg">
+                    <div class="border-b border-gray-200">
+                        <div id="resultTabButtons" class="flex flex-wrap">
+                            <!-- 结果标签页按钮将通过JavaScript动态生成 -->
+                        </div>
+                    </div>
+                    <div id="resultTabContents" class="p-6">
+                        <!-- 结果内容将通过JavaScript动态生成 -->
+                    </div>
+                </div>
+
+                <!-- 聚合统计 控件（默认隐藏，查询全部完成后显示） -->
+                <div id="aggregateControls" class="mt-4 px-6 hidden">
+                    <div class="flex items-center justify-between">
+                        <div class="text-sm text-gray-600">当所有数据库查询完成且每个库返回两列（其中一列名为 <code>count</code>）时，可进行聚合统计。</div>
+                        <div class="flex items-center space-x-2">
+                            <button id="openAggregateModalBtn" onclick="openAggregateModal()"
+                                class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 transition-colors">
+                                <i class="fa fa-calculator mr-2"></i>聚合统计
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 内联自动聚合结果（自动触发，默认规则为空） -->
+                    <div id="aggregateInline" class="mt-4">
+                        <div class="text-sm text-gray-500 mb-2">自动聚合结果（默认规则为空）：</div>
+                        <div id="aggregateInlineResult" class="overflow-x-auto"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 配置管理标签页 -->
+        <div id="configTabContent" class="tab-content hidden">
+            <div class="bg-white rounded-xl shadow-lg p-6">
+                <h2 class="text-xl font-semibold text-gray-900 mb-6">系统配置</h2>
+
+                <div class="space-y-8">
+                    <!-- 飞书配置 -->
+                    <div>
+                        <h3 class="text-lg font-medium text-gray-900 mb-4">
+                            <i class="fa fa-bullseye text-green-500 mr-2"></i>飞书通知配置
+                        </h3>
+                        <div class="bg-gray-50 rounded-lg p-4">
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">飞书机器人Webhook</label>
+                                <input type="text" id="feishuWebhook"
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                                    placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/...">
+                                <p class="text-xs text-gray-500 mt-1">获取方式：飞书群聊 → 设置 → 智能群助手 → 添加机器人 → 自定义机器人</p>
+                            </div>
+                            <!-- <div class="flex items-center">
+                                <input type="checkbox" id="enableFeishu"
+                                    class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded">
+                                <label for="enableFeishu" class="ml-2 block text-sm text-gray-700">启用飞书通知</label>
+                            </div> -->
+                        </div>
+                    </div>
+
+                    <!-- 查询配置 -->
+                    <div>
+                        <h3 class="text-lg font-medium text-gray-900 mb-4">
+                            <i class="fa fa-bullseye text-blue-500 mr-2"></i>查询配置
+                        </h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">查询超时时间 (秒)</label>
+                                <input type="number" id="queryTimeout"
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                                    min="30" max="3600" value="600">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">最大并发连接数</label>
+                                <input type="number" id="maxConnections"
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                                    min="1" max="20" value="5">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 数据库配置 -->
+                    <div>
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-medium text-gray-900">
+                                <i class="fa fa-database text-purple-500 mr-2"></i>数据库配置
+                            </h3>
+                            <button onclick="addDatabase()"
+                                class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 transition-colors">
+                                <i class="fa fa-plus mr-2"></i>添加数据库
+                            </button>
+                        </div>
+
+                        <div id="databaseConfigs" class="space-y-4">
+                            <!-- 数据库配置卡片将通过JavaScript动态生成 -->
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-8 flex justify-end space-x-3">
+                    <button onclick="resetConfig()"
+                        class="px-6 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
+                        <i class="fa fa-bullseye mr-2"></i>重置默认
+                    </button>
+                    <button id="saveConfigBtn" onclick="saveConfig()"
+                        class="px-6 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 transition-colors">
+                        <i class="fa fa-save mr-2"></i>保存配置
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 查询历史标签页 -->
+        <div id="historyTabContent" class="tab-content hidden">
+            <div class="bg-white rounded-xl shadow-lg p-6">
+                <h2 class="text-xl font-semibold text-gray-900 mb-6">查询历史记录</h2>
+
+                <div class="mb-6">
+                    <div class="flex items-center justify-between">
+                        <div class="flex space-x-2">
+                            <input type="text" id="historySearch" placeholder="搜索查询ID或状态..."
+                                class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <button onclick="searchHistory()"
+                                class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 transition-colors">
+                                <i class="fa fa-search"></i>
+                            </button>
+                        </div>
+                        <select id="historyFilter"
+                            class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <option value="all">所有状态</option>
+                            <option value="running">执行中</option>
+                            <option value="completed">已完成</option>
+                            <option value="failed">已失败</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="historyList" class="space-y-4">
+                    <!-- 历史记录将通过JavaScript动态生成 -->
+                    <div class="text-center py-12 text-gray-500">
+                        <i class="fa fa-history text-4xl mb-4"></i>
+                        <p>暂无查询历史记录</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 数据库配置模态框 -->
+    <div id="databaseModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4">
+            <div class="p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold text-gray-900" id="modalTitle">添加数据库</h3>
+                    <button onclick="closeDatabaseModal()" class="text-gray-400 hover:text-gray-600">
+                        <i class="fa fa-times"></i>
+                    </button>
+                </div>
+
+                <form id="databaseForm">
+                    <input type="hidden" id="databaseId">
+
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">数据库名称</label>
+                        <input type="text" id="dbName" required
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">主机地址</label>
+                        <input type="text" id="dbHost" required
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                            placeholder="192.168.0.1">
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">端口</label>
+                        <input type="number" id="dbPort" required
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                            value="3306">
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">数据库名称</label>
+                        <input type="text" id="dbDatabase" required
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                            placeholder="casibase">
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">用户名</label>
+                        <input type="text" id="dbUser" required
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">密码</label>
+                        <input type="password" id="dbPassword"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+                    </div>
+
+                    <div class="flex items-center mb-6">
+                        <input type="checkbox" id="dbEnabled"
+                            class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded" checked>
+                        <label for="dbEnabled" class="ml-2 block text-sm text-gray-700">启用数据库</label>
+                    </div>
+
+                    <div class="flex space-x-3">
+                        <button type="button" onclick="testDatabaseConnection()"
+                            class="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
+                            <i class="fa fa-bullseye mr-2"></i>测试连接
+                        </button>
+                        <button type="submit"
+                            class="flex-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 transition-colors">
+                            <i class="fa fa-save mr-2"></i>保存
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- SQL 模板 模态框 -->
+    <!-- 聚合统计 模态框 -->
+    <div id="aggregateModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4">
+            <div class="p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold text-gray-900">聚合统计</h3>
+                    <button onclick="closeAggregateModal()" class="text-gray-400 hover:text-gray-600">
+                        <i class="fa fa-times"></i>
+                    </button>
+                </div>
+
+                <p class="text-sm text-gray-600 mb-4">
+                    在下面输入相似项规则，则会将相似项合并统计。每行一个规则。格式：<code>标签:变体1,变体2,变体3</code>。例如：<code>聚合后显示名称:数据库1值,数据库2值</code>
+                </p>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">相似项规则</label>
+                    <textarea id="aggregateRules" rows="5" placeholder="每行一条规则：标签:变体1,变体2"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary font-mono text-sm resize-none"></textarea>
+                </div>
+
+                <div id="aggregateResultContainer" class="mb-4 hidden">
+                    <h4 class="text-sm font-medium text-gray-900 mb-2">聚合结果</h4>
+                    <div id="aggregateResult" class="overflow-x-auto"></div>
+                </div>
+
+                <div class="flex justify-end space-x-3">
+                    <button onclick="performAggregation()" id="doAggregateBtn"
+                        class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 transition-colors">
+                        <i class="fa fa-play mr-2"></i>开始聚合
+                    </button>
+                    <button onclick="closeAggregateModal()"
+                        class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="templateModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4">
+            <div class="p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold text-gray-900" id="templateModalTitle">模板管理</h3>
+                    <button onclick="closeTemplateModal()" class="text-gray-400 hover:text-gray-600">
+                        <i class="fa fa-times"></i>
+                    </button>
+                </div>
+
+                <form id="templateForm">
+                    <input type="hidden" id="templateId">
+
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">模板名称</label>
+                        <input type="text" id="templateName" required
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">SQL 内容</label>
+                        <textarea id="templateSql" rows="6"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent font-mono text-sm resize-none"></textarea>
+                    </div>
+
+                    <div class="flex space-x-3">
+                        <button type="button" onclick="deleteTemplateConfirm()" id="deleteTemplateBtn"
+                            class="flex-1 px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors hidden">
+                            <i class="fa fa-trash mr-2"></i>删除模板
+                        </button>
+                        <button type="submit"
+                            class="flex-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 transition-colors">
+                            <i class="fa fa-save mr-2"></i>保存模板
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量
+        let config = null;
+        let currentQueryId = null;
+        let webSocket = null;
+        let queryHistory = [];
+
+        // 初始化应用
+        async function initApp() {
+            await loadConfig();
+            setupWebSocket();
+            setupEventListeners();
+            renderDatabaseSelection();
+            renderDatabaseConfigs();
+            loadDefaultQuery();
+        }
+
+        // 加载配置
+        async function loadConfig() {
+            try {
+                const response = await fetch('/api/config');
+                config = await response.json();
+                updateConfigForm();
+                return config;
+            } catch (error) {
+                console.error('加载配置失败:', error);
+                showNotification('加载配置失败', 'error');
+            }
+        }
+
+        // 设置WebSocket连接
+        function setupWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const url = `${protocol}//${window.location.host}/ws`;
+
+            webSocket = new WebSocket(url);
+
+            webSocket.onopen = () => {
+                console.log('WebSocket连接已建立');
+                updateConnectionStatus(true);
+            };
+
+            webSocket.onclose = () => {
+                console.log('WebSocket连接已关闭');
+                updateConnectionStatus(false);
+                // 自动重连
+                setTimeout(setupWebSocket, 3000);
+            };
+
+            webSocket.onerror = (error) => {
+                console.error('WebSocket错误:', error);
+                updateConnectionStatus(false);
+            };
+
+            webSocket.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                console.log('WebSocket消息:', message);
+                handleWebSocketMessage(message);
+            };
+        }
+
+        // 处理WebSocket消息
+        function handleWebSocketMessage(message) {
+            switch (message.type) {
+                case 'queryUpdate':
+                    updateQueryStatus(message.data);
+                    break;
+                case 'notification':
+                    showNotification(message.content, message.type);
+                    break;
+            }
+        }
+
+        // 更新连接状态
+        function updateConnectionStatus(connected) {
+            const statusElement = document.getElementById('connectionStatus');
+            if (connected) {
+                statusElement.innerHTML = '<span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span>已连接';
+                statusElement.className = 'inline-flex items-center text-green-600';
+            } else {
+                statusElement.innerHTML = '<span class="w-2 h-2 bg-red-500 rounded-full mr-2"></span>未连接';
+                statusElement.className = 'inline-flex items-center text-red-600';
+            }
+        }
+
+        // 设置事件监听器
+        function setupEventListeners() {
+            // 数据库表单提交
+            document.getElementById('databaseForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                await saveDatabaseConfig();
+            });
+
+            // SQL编辑器自动调整高度
+            const sqlEditor = document.getElementById('sqlEditor');
+            sqlEditor.addEventListener('input', () => {
+                sqlEditor.style.height = 'auto';
+                sqlEditor.style.height = Math.min(sqlEditor.scrollHeight, 400) + 'px';
+            });
+
+            // 快捷键
+            document.addEventListener('keydown', (e) => {
+                if (e.ctrlKey || e.metaKey) {
+                    switch (e.key) {
+                        case 's':
+                            e.preventDefault();
+                            if (document.getElementById('configTabContent').classList.contains('hidden')) {
+                                executeQuery();
+                            } else {
+                                saveConfig();
+                            }
+                            break;
+                        case 'Enter':
+                            e.preventDefault();
+                            executeQuery();
+                            break;
+                    }
+                }
+            });
+        }
+
+        // 切换标签页
+        function switchTab(tabName) {
+            // 隐藏所有标签页内容
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.add('hidden');
+            });
+
+            // 重置所有标签页按钮
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                btn.classList.remove('border-primary', 'text-primary');
+                btn.classList.add('border-transparent', 'text-gray-500');
+            });
+
+            // 显示选中的标签页
+            document.getElementById(tabName + 'TabContent').classList.remove('hidden');
+
+            // 激活选中的标签页按钮
+            const activeTab = document.getElementById(tabName + 'Tab');
+            activeTab.classList.remove('border-transparent', 'text-gray-500');
+            activeTab.classList.add('border-primary', 'text-primary');
+
+            // 如果切换到历史标签页，加载历史记录
+            if (tabName === 'history') {
+                loadQueryHistory();
+            }
+        }
+
+        // 渲染数据库选择
+        function renderDatabaseSelection() {
+            const container = document.getElementById('databaseSelection');
+            container.innerHTML = '';
+
+            if (!config || !config.databaseConfigs) return;
+
+            config.databaseConfigs.forEach(db => {
+                const card = document.createElement('div');
+                card.className = `database-card border-2 rounded-lg p-4 cursor-pointer transition-all duration-200 ${db.enabled ? 'border-primary bg-blue-50' : 'border-gray-200 bg-gray-50 opacity-50'
+                    }`;
+
+                card.innerHTML = `
+                    <div class="flex items-center justify-between mb-2">
+                        <h4 class="font-medium text-gray-900">${db.name}</h4>
+                        <input type="checkbox" class="database-checkbox" data-id="${db.id}" ${db.enabled ? 'checked' : ''} ${!db.enabled ? 'disabled' : ''}>
+                    </div>
+                    <div class="text-sm text-gray-600 space-y-1">
+                        <div>主机: ${db.host}</div>
+                        <div>端口: ${db.port}</div>
+                        <div>数据库: ${db.database}</div>
+                        <div>用户: ${db.user}</div>
+                    </div>
+                `;
+
+                card.addEventListener('click', (e) => {
+                    if (e.target.type !== 'checkbox' && db.enabled) {
+                        const checkbox = card.querySelector('.database-checkbox');
+                        checkbox.checked = !checkbox.checked;
+                    }
+                });
+
+                container.appendChild(card);
+            });
+        }
+
+        // 加载默认查询
+        function loadDefaultQuery() {
+            if (config && config.sqlQuery) {
+                const sqlEditor = document.getElementById('sqlEditor');
+                sqlEditor.value = config.sqlQuery;
+                sqlEditor.style.height = 'auto';
+                sqlEditor.style.height = Math.min(sqlEditor.scrollHeight, 400) + 'px';
+            }
+        }
+
+        // 执行查询
+        async function executeQuery() {
+            const selectedDatabases = Array.from(document.querySelectorAll('.database-checkbox:checked'))
+                .map(checkbox => checkbox.getAttribute('data-id'));
+
+            const sqlQuery = document.getElementById('sqlEditor').value.trim();
+
+            if (selectedDatabases.length === 0) {
+                showNotification('请至少选择一个数据库', 'warning');
+                return;
+            }
+
+            if (!sqlQuery) {
+                showNotification('请输入SQL查询语句', 'warning');
+                return;
+            }
+
+            try {
+                // 禁用执行按钮
+                const executeBtn = document.getElementById('executeBtn');
+                executeBtn.disabled = true;
+                executeBtn.innerHTML = '<i class="fa fa-spinner fa-spin mr-2"></i>执行中...';
+
+                // 保存当前查询到配置
+                if (config.sqlQuery !== sqlQuery) {
+                    config.sqlQuery = sqlQuery;
+                    await saveConfig(false);
+                }
+
+                // 执行查询
+                const response = await fetch('/api/execute-query', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ dbIds: selectedDatabases })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    currentQueryId = result.queryId;
+                    showQueryResults();
+                    subscribeToQuery(result.queryId);
+                    addLogEntry(`查询已启动，程序等待1s防抖，Query ID: ${result.queryId}`);
+                } else {
+                    showNotification(result.message, 'error');
+                }
+
+            } catch (error) {
+                console.error('查询执行失败:', error);
+                showNotification('查询执行失败', 'error');
+            } finally {
+                // 启用执行按钮
+                const executeBtn = document.getElementById('executeBtn');
+                executeBtn.disabled = false;
+                executeBtn.innerHTML = '<i class="fa fa-play mr-2"></i>执行查询';
+            }
+        }
+
+        // 显示查询结果
+        function showQueryResults() {
+            const resultsDiv = document.getElementById('queryResults');
+            resultsDiv.classList.remove('hidden');
+
+            // 重置状态
+            document.getElementById('totalDatabases').textContent = 0;
+            document.getElementById('completedDatabases').textContent = 0;
+            document.getElementById('failedDatabases').textContent = 0;
+            document.getElementById('executionTime').textContent = '0s';
+            document.getElementById('progressPercentage').textContent = '0%';
+            document.getElementById('progressBar').style.width = '0%';
+            document.getElementById('queryLog').innerHTML = '';
+
+            // 滚动到结果区域
+            resultsDiv.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // 订阅查询状态
+        function subscribeToQuery(queryId) {
+            if (webSocket && webSocket.readyState === WebSocket.OPEN) {
+                webSocket.send(JSON.stringify({
+                    type: 'subscribe',
+                    queryId: queryId
+                }));
+            }
+        }
+
+        // 更新查询状态
+        function updateQueryStatus(queryData) {
+            if (!queryData || queryData.id !== currentQueryId) return;
+
+            const totalDbs = Object.keys(queryData.databases).length;
+            const completedDbs = Object.values(queryData.results).filter(r => r.status !== 'running').length;
+            const failedDbs = Object.values(queryData.results).filter(r => r.status === 'failed').length;
+
+            // 更新统计信息
+            document.getElementById('totalDatabases').textContent = totalDbs;
+            document.getElementById('completedDatabases').textContent = completedDbs - failedDbs;
+            document.getElementById('failedDatabases').textContent = failedDbs;
+
+            // 更新执行时间
+            if (queryData.startTime) {
+                const startTime = new Date(queryData.startTime);
+                const currentTime = queryData.endTime ? new Date(queryData.endTime) : new Date();
+                const executionTime = Math.floor((currentTime - startTime) / 1000);
+                document.getElementById('executionTime').textContent = `${executionTime}s`;
+            }
+
+            // 更新进度
+            const progress = totalDbs > 0 ? Math.floor((completedDbs / totalDbs) * 100) : 0;
+            document.getElementById('progressPercentage').textContent = `${progress}%`;
+            document.getElementById('progressBar').style.width = `${progress}%`;
+
+            // 更新状态徽章
+            const statusBadge = document.getElementById('queryStatusBadge');
+            switch (queryData.status) {
+                case 'running':
+                    statusBadge.className = 'px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800';
+                    statusBadge.textContent = '执行中...';
+                    break;
+                case 'completed':
+                    statusBadge.className = 'px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800';
+                    statusBadge.textContent = '已完成';
+                    break;
+                case 'failed':
+                    statusBadge.className = 'px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800';
+                    statusBadge.textContent = '已失败';
+                    break;
+            }
+
+            // 更新日志
+            // Object.values(queryData.results).forEach(result => {
+            //     if (result.status === 'success' && !result.logged) {
+            //         addLogEntry(`✅ ${result.database}: 查询完成，结果行数： ${result.rowCount} 条`);
+            //         result.logged = true;
+            //     } else if (result.status === 'failed' && !result.logged) {
+            //         addLogEntry(`❌ ${result.database}: 查询失败 - ${result.error}`);
+            //         result.logged = true;
+            //     }
+            // });
+            // 日志写成一段话：当前总体运行状态，其中数据库1运行成功，数据库2运行失败，数据库3运行中...
+            var logMessage = `当前总体运行状态：${queryData.status}`;
+            // 正在运行的数据库
+            var runningDatabases = Object.values(queryData.results).filter(result => result.status === 'running');
+            if (runningDatabases.length > 0) {
+                logMessage += `，正在运行的数据库💪：${runningDatabases.map(result => result.database).join(', ')}`;
+            }
+            // 运行成功的数据库
+            var successDatabases = Object.values(queryData.results).filter(result => result.status === 'success');
+            if (successDatabases.length > 0) {
+                logMessage += `，运行成功的数据✅：${successDatabases.map(result => result.database).join(', ')}`;
+            }
+            // 运行失败的数据库
+            var failedDatabases = Object.values(queryData.results).filter(result => result.status === 'failed');
+            if (failedDatabases.length > 0) {
+                logMessage += `，运行失败的数据库❌：${failedDatabases.map(result => result.database).join(', ')}`;
+            }
+            addLogEntry(logMessage);
+
+            renderQueryResults(queryData.results);
+            // 更新聚合控件：仅当所有结果不再处于 running 时显示
+            if (typeof renderAggregateControls === 'function') {
+                try { renderAggregateControls(queryData.results); } catch (e) { console.error(e); }
+            }
+            // 查询完成后显示结果
+            if (queryData.status !== 'running') {
+
+                addLogEntry(`查询完成，状态: ${queryData.status}`);
+
+                // 添加到历史记录
+                queryHistory.unshift(queryData);
+                saveQueryHistory();
+            }
+        }
+
+        // 添加日志条目
+        function addLogEntry(message) {
+            const logContainer = document.getElementById('queryLog');
+            const logEntry = document.createElement('div');
+            logEntry.className = 'mb-1 text-sm';
+            logEntry.innerHTML = `<span class="text-gray-400">[${new Date().toLocaleTimeString()}]</span> ${message}`;
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        // 渲染查询结果（支持 success / failed / running）
+        function renderQueryResults(results) {
+            const tabButtons = document.getElementById('resultTabButtons');
+            const tabContents = document.getElementById('resultTabContents');
+
+            tabButtons.innerHTML = '';
+            tabContents.innerHTML = '';
+
+            let activeTab = null;
+            let idx = 0;
+
+            Object.values(results).forEach((result) => {
+                // 创建标签页按钮（始终渲染，不论状态）
+                const tabButton = document.createElement('button');
+                tabButton.className = `px-4 py-3 text-sm font-medium ${idx === 0 ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`;
+                tabButton.textContent = result.database + (result.status === 'running' ? ' · 执行中' : result.status === 'failed' ? ' · 失败' : '');
+                tabButton.onclick = () => switchResultTab(result.databaseId, tabButton);
+                tabButtons.appendChild(tabButton);
+
+                // 创建标签页内容
+                const tabContent = document.createElement('div');
+                tabContent.id = `resultTab_${result.databaseId}`;
+                tabContent.className = `result-tab-content ${idx === 0 ? '' : 'hidden'}`;
+
+                if (result.status === 'success') {
+                    // 成功：显示表格（若无数据则提示）
+                    if (!result.results || result.results.length === 0) {
+                        tabContent.innerHTML = `
+                            <div class="text-center py-8 text-gray-500">
+                                <i class="fa fa-database text-3xl mb-4"></i>
+                                <p>没有查询到数据</p>
+                            </div>
+                        `;
+                    } else {
+                        tabContent.innerHTML = `
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full divide-y divide-gray-200">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            ${Object.keys(result.results[0]).map(key =>
+                            `<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">${key}</th>`
+                        ).join('')}
+                                        </tr>
+                                    </thead>
+                                    <tbody class="bg-white divide-y divide-gray-200">
+                                        ${result.results.map((row, rowIndex) => `
+                                            <tr class="${rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}">
+                                                ${Object.values(row).map(value =>
+                            `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${value}</td>`
+                        ).join('')}
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="mt-4 text-sm text-gray-600">
+                                <p>查询时间: ${new Date(result.startTime).toLocaleString()}</p>
+                                <p>执行时间: ${result.executionTime}ms</p>
+                                <p>行数量: ${result.rowCount || 0} 条</p>
+                            </div>
+                        `;
+                    }
+                } else if (result.status === 'failed') {
+                    // 失败：显示错误信息
+                    tabContent.innerHTML = `
+                        <div class="text-center py-8 text-red-600">
+                            <i class="fa fa-times-circle text-3xl mb-4"></i>
+                            <p>查询失败</p>
+                            <p class="text-sm text-gray-600 mt-2">错误：${result.error || '未知错误'}</p>
+                            <div class="mt-4 text-sm text-gray-600">
+                                <p>开始时间: ${result.startTime ? new Date(result.startTime).toLocaleString() : '-'}</p>
+                                <p>结束时间: ${result.endTime ? new Date(result.endTime).toLocaleString() : '-'}</p>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    // running 等待中：显示加载态
+                    tabContent.innerHTML = `
+                        <div class="text-center py-8 text-gray-600">
+                            <i class="fa fa-spinner fa-spin text-3xl mb-4"></i>
+                            <p>查询中…</p>
+                            <div class="mt-4 text-sm text-gray-600">
+                                <p>开始时间: ${result.startTime ? new Date(result.startTime).toLocaleString() : '-'}</p>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                tabContents.appendChild(tabContent);
+
+                if (idx === 0) {
+                    activeTab = result.databaseId;
+                }
+
+                idx++;
+            });
+
+            // 如果没有任何 tab 被激活（极端情况），显示提示
+            if (!activeTab) {
+                tabContents.innerHTML = `
+                    <div class="text-center py-8 text-gray-500">
+                        <i class="fa fa-exclamation-triangle text-3xl mb-4"></i>
+                        <p>没有查询结果</p>
+                    </div>
+                `;
+            }
+        }
+
+        // 切换结果标签页
+        function switchResultTab(databaseId, btn) {
+            // 隐藏所有结果标签页
+            document.querySelectorAll('.result-tab-content').forEach(tab => {
+                tab.classList.add('hidden');
+            });
+
+            // 重置所有标签页按钮样式
+            document.querySelectorAll('#resultTabButtons button').forEach(b => {
+                b.classList.remove('border-primary', 'text-primary');
+                b.classList.add('border-transparent', 'text-gray-500');
+            });
+
+            // 显示选中的标签页
+            const activeTab = document.getElementById(`resultTab_${databaseId}`);
+            if (activeTab) {
+                activeTab.classList.remove('hidden');
+            }
+
+            // 激活传入的按钮（如果提供）
+            if (btn && btn.classList) {
+                btn.classList.remove('border-transparent', 'text-gray-500');
+                btn.classList.add('border-primary', 'text-primary');
+            }
+        }
+
+        // ---------- 聚合统计功能 ----------
+        // 根据当前渲染的 results 决定是否显示聚合按钮
+        function renderAggregateControls(results) {
+            const container = document.getElementById('aggregateControls');
+            if (!container) return;
+
+            const vals = Object.values(results || {});
+            if (vals.length === 0) {
+                container.classList.add('hidden');
+                return;
+            }
+
+            // 如果还有正在运行的库，则不显示
+            const anyRunning = vals.some(r => r.status === 'running');
+            if (anyRunning) {
+                container.classList.add('hidden');
+                return;
+            }
+
+            // 检查每个库的返回是否满足：有 results 且每行两列且包含 count 列
+            let canAggregate = true;
+            for (const r of vals) {
+                if (!r.results || r.results.length === 0) { canAggregate = false; break; }
+                const sample = r.results[0];
+                const keys = Object.keys(sample || {});
+                if (keys.length !== 2) { canAggregate = false; break; }
+                const lower = keys.map(k => k.toLowerCase());
+                if (!lower.includes('count')) { canAggregate = false; break; }
+            }
+
+            if (canAggregate) {
+                container.classList.remove('hidden');
+                // 保存当前结果以供聚合操作使用
+                // snapshot 用于避免重复自动聚合
+                const snapshot = JSON.stringify(results);
+                if (window._lastAggregatedSnapshot !== snapshot) {
+                    window._lastAggregatedSnapshot = snapshot;
+                    window._lastAggregatableResults = results;
+                    // 自动聚合（默认规则为空）并把结果渲染到内联区域
+                    try {
+                        const agg = computeAggregation(results, new Map());
+                        renderInlineAggregation(agg);
+                        showNotification('自动聚合完成', 'success');
+                    } catch (e) {
+                        console.error('自动聚合失败', e);
+                    }
+                } else {
+                    window._lastAggregatableResults = results;
+                }
+            } else {
+                container.classList.add('hidden');
+                window._lastAggregatableResults = null;
+            }
+        }
+
+        function openAggregateModal() {
+            const modal = document.getElementById('aggregateModal');
+            if (!modal) return;
+            document.getElementById('aggregateRules').value = '';
+            document.getElementById('aggregateResultContainer').classList.add('hidden');
+            document.getElementById('aggregateResult').innerHTML = '';
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeAggregateModal() {
+            const modal = document.getElementById('aggregateModal');
+            if (!modal) return;
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        // 解析用户自定义规则，返回 variantLower -> canonicalLabel 映射
+        function _parseAggregateRules(text) {
+            const map = new Map();
+            if (!text) return map;
+            const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+            for (const line of lines) {
+                const parts = line.split(':');
+                if (parts.length < 2) continue;
+                const label = parts[0].trim();
+                const variants = parts.slice(1).join(':').split(',').map(v => v.trim()).filter(Boolean);
+                for (const v of variants) {
+                    map.set(v.toLowerCase(), label);
+                }
+            }
+            return map;
+        }
+
+        // 执行聚合：根据规则将相同/相似项的 count 相加并在模态中显示
+        async function performAggregation() {
+            const btn = document.getElementById('doAggregateBtn');
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa fa-spinner fa-spin mr-2"></i>聚合中...'; }
+
+            try {
+                const results = window._lastAggregatableResults;
+                if (!results) {
+                    showNotification('没有可供聚合的结果', 'warning');
+                    return;
+                }
+
+                // 解析规则
+                const rulesText = document.getElementById('aggregateRules').value.trim();
+                const ruleMap = _parseAggregateRules(rulesText);
+
+                const agg = {}; // canonical -> count
+
+                for (const r of Object.values(results)) {
+                    if (!r.results || r.results.length === 0) continue;
+                    const sampleKeys = Object.keys(r.results[0]);
+                    const countKey = sampleKeys.find(k => k.toLowerCase() === 'count');
+                    const otherKey = sampleKeys.find(k => k.toLowerCase() !== 'count');
+                    if (!countKey || !otherKey) {
+                        showNotification('结果格式不符合（必须含有 count 列和另一个列）', 'error');
+                        return;
+                    }
+
+                    for (const row of r.results) {
+                        const raw = String(row[otherKey] ?? '').trim();
+                        const rawLower = raw.toLowerCase();
+                        // 先尝试规则匹配：如果规则中的 variant 在 raw 中出现，则使用对应 canonical
+                        let canonical = null;
+                        for (const [variantLower, label] of ruleMap.entries()) {
+                            if (!variantLower) continue;
+                            if (rawLower === variantLower || rawLower.includes(variantLower)) {
+                                canonical = label; break;
+                            }
+                        }
+                        if (!canonical) canonical = raw || '(空)';
+
+                        let cnt = Number(row[countKey]);
+                        if (isNaN(cnt)) cnt = 0;
+                        agg[canonical] = (agg[canonical] || 0) + cnt;
+                    }
+                }
+
+                // 构建表格
+                const rows = Object.entries(agg).sort((a, b) => b[1] - a[1]);
+                const container = document.getElementById('aggregateResult');
+                if (!container) return;
+                if (rows.length === 0) {
+                    container.innerHTML = '<div class="text-sm text-gray-500">没有可聚合的数据</div>';
+                } else {
+                    container.innerHTML = `
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">标签</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">count</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-white divide-y divide-gray-200">
+                                    ${rows.map(([label, cnt]) => `
+                                        <tr>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${label}</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${cnt}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                }
+
+                document.getElementById('aggregateResultContainer').classList.remove('hidden');
+                showNotification('聚合完成', 'success');
+
+            } catch (error) {
+                console.error('聚合失败', error);
+                showNotification('聚合失败', 'error');
+            } finally {
+                if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa fa-play mr-2"></i>开始聚合'; }
+            }
+        }
+
+        // 通用聚合计算（不关心渲染）：返回 { label: count }
+        function computeAggregation(results, ruleMap) {
+            const agg = {};
+            for (const r of Object.values(results)) {
+                if (!r.results || r.results.length === 0) continue;
+                const sampleKeys = Object.keys(r.results[0]);
+                const countKey = sampleKeys.find(k => k.toLowerCase() === 'count');
+                const otherKey = sampleKeys.find(k => k.toLowerCase() !== 'count');
+                if (!countKey || !otherKey) continue;
+
+                for (const row of r.results) {
+                    const raw = String(row[otherKey] ?? '').trim();
+                    const rawLower = raw.toLowerCase();
+                    let canonical = null;
+                    for (const [variantLower, label] of ruleMap.entries()) {
+                        if (!variantLower) continue;
+                        if (rawLower === variantLower || rawLower.includes(variantLower)) {
+                            canonical = label; break;
+                        }
+                    }
+                    if (!canonical) canonical = raw || '(空)';
+                    let cnt = Number(row[countKey]);
+                    if (isNaN(cnt)) cnt = 0;
+                    agg[canonical] = (agg[canonical] || 0) + cnt;
+                }
+            }
+            return agg;
+        }
+
+        // 将聚合结果渲染到 aggregateInlineResult
+        function renderInlineAggregation(agg) {
+            const container = document.getElementById('aggregateInlineResult');
+            if (!container) return;
+            const rows = Object.entries(agg).sort((a, b) => b[1] - a[1]);
+            if (rows.length === 0) {
+                container.innerHTML = '<div class="text-sm text-gray-500">没有可聚合的数据</div>';
+                return;
+            }
+            container.innerHTML = `
+                <div class="overflow-x-auto bg-white rounded border p-2">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">标签</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">count</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            ${rows.map(([label, cnt]) => `
+                                <tr>
+                                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">${label}</td>
+                                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">${cnt}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        // 渲染数据库配置
+        function renderDatabaseConfigs() {
+            const container = document.getElementById('databaseConfigs');
+            container.innerHTML = '';
+
+            if (!config || !config.databaseConfigs) return;
+
+            config.databaseConfigs.forEach(db => {
+                const card = document.createElement('div');
+                card.className = `bg-gray-50 rounded-lg p-4 border ${db.enabled ? 'border-green-200' : 'border-gray-200'}`;
+
+                card.innerHTML = `
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-3 h-3 rounded-full ${db.enabled ? 'bg-green-500' : 'bg-gray-400'}"></div>
+                            <h4 class="font-medium text-gray-900">${db.name}</h4>
+                            <span class="px-2 py-1 text-xs rounded-full ${db.enabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}">
+                                ${db.enabled ? '已启用' : '已禁用'}
+                            </span>
+                        </div>
+                        <div class="flex space-x-2">
+                            <button onclick="editDatabase('${db.id}')" class="p-2 text-gray-600 hover:text-primary">
+                                <i class="fa fa-edit"></i>
+                            </button>
+                            <button onclick="deleteDatabase('${db.id}')" class="p-2 text-gray-600 hover:text-red-500">
+                                <i class="fa fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600">
+                        <div>
+                            <span class="text-gray-500">主机:</span> ${db.host}
+                        </div>
+                        <div>
+                            <span class="text-gray-500">端口:</span> ${db.port}
+                        </div>
+                        <div>
+                            <span class="text-gray-500">数据库:</span> ${db.database}
+                        </div>
+                        <div>
+                            <span class="text-gray-500">用户:</span> ${db.user}
+                        </div>
+                    </div>
+                `;
+
+                container.appendChild(card);
+            });
+        }
+
+        // 更新配置表单
+        function updateConfigForm() {
+            if (!config) return;
+
+            document.getElementById('feishuWebhook').value = config.feishuWebhook || '';
+            document.getElementById('queryTimeout').value = config.queryTimeout ? config.queryTimeout / 1000 : 600;
+            document.getElementById('maxConnections').value = config.maxConnections || 5;
+            // 渲染 SQL 模板按钮
+            renderSQLTemplates();
+        }
+
+        // 保存配置
+        async function saveConfig(showNotificationBool = true) {
+            const saveBtn = document.getElementById('saveConfigBtn');
+            let originalText;
+            if (saveBtn) {
+                originalText = saveBtn.innerHTML;
+                saveBtn.disabled = true;
+                saveBtn.innerHTML = '<i class="fa fa-spinner fa-spin mr-2"></i>保存中...';
+            }
+
+            try {
+                const newConfig = {
+                    ...config,
+                    feishuWebhook: document.getElementById('feishuWebhook').value,
+                    queryTimeout: parseInt(document.getElementById('queryTimeout').value) * 1000,
+                    maxConnections: parseInt(document.getElementById('maxConnections').value)
+                };
+
+                const response = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(newConfig)
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    config = newConfig;
+                    // 刷新相关 UI，让用户看到变更生效
+                    updateConfigForm();
+                    renderDatabaseConfigs();
+                    renderDatabaseSelection();
+                    renderSQLTemplates();
+
+                    if (showNotificationBool) {
+                        showNotification('配置保存成功', 'success');
+                    }
+                } else {
+                    showNotification(result.message, 'error');
+                }
+
+            } catch (error) {
+                console.error('保存配置失败:', error);
+                showNotification('保存配置失败', 'error');
+            } finally {
+                if (saveBtn) {
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = originalText;
+                }
+            }
+        }
+
+        // 重置配置
+        async function resetConfig() {
+            if (confirm('确定要重置为默认配置吗？所有当前配置将丢失！')) {
+                try {
+                    const response = await fetch('/api/config/reset', { method: 'POST' });
+                    const result = await response.json();
+                    if (result.success) {
+                        await loadConfig();
+                        renderDatabaseConfigs();
+                        showNotification('配置已重置为默认值', 'success');
+                    }
+                } catch (error) {
+                    console.error('重置配置失败:', error);
+                    showNotification('重置配置失败', 'error');
+                }
+            }
+        }
+
+        // 添加数据库
+        function addDatabase() {
+            document.getElementById('modalTitle').textContent = '添加数据库';
+            document.getElementById('databaseForm').reset();
+            document.getElementById('databaseId').value = '';
+            document.getElementById('dbEnabled').checked = true;
+            document.getElementById('databaseModal').classList.remove('hidden');
+            document.getElementById('databaseModal').classList.add('flex');
+        }
+
+        // 编辑数据库
+        function editDatabase(databaseId) {
+            const db = config.databaseConfigs.find(d => d.id === databaseId);
+            if (!db) return;
+
+            document.getElementById('modalTitle').textContent = '编辑数据库';
+            document.getElementById('databaseId').value = db.id;
+            document.getElementById('dbName').value = db.name;
+            document.getElementById('dbHost').value = db.host;
+            document.getElementById('dbPort').value = db.port;
+            document.getElementById('dbDatabase').value = db.database;
+            document.getElementById('dbUser').value = db.user;
+            document.getElementById('dbPassword').value = db.password;
+            document.getElementById('dbEnabled').checked = db.enabled;
+
+            document.getElementById('databaseModal').classList.remove('hidden');
+            document.getElementById('databaseModal').classList.add('flex');
+        }
+
+        // 保存数据库配置
+        async function saveDatabaseConfig() {
+            const databaseId = document.getElementById('databaseId').value;
+            const newDatabase = {
+                id: databaseId || 'db_' + Date.now(),
+                name: document.getElementById('dbName').value,
+                host: document.getElementById('dbHost').value,
+                port: parseInt(document.getElementById('dbPort').value),
+                database: document.getElementById('dbDatabase').value,
+                user: document.getElementById('dbUser').value,
+                password: document.getElementById('dbPassword').value,
+                enabled: document.getElementById('dbEnabled').checked
+            };
+
+            if (!config.databaseConfigs) {
+                config.databaseConfigs = [];
+            }
+
+            const existingIndex = config.databaseConfigs.findIndex(d => d.id === newDatabase.id);
+            if (existingIndex >= 0) {
+                config.databaseConfigs[existingIndex] = newDatabase;
+            } else {
+                config.databaseConfigs.push(newDatabase);
+            }
+
+            await saveConfig();
+            renderDatabaseConfigs();
+            renderDatabaseSelection();
+            closeDatabaseModal();
+        }
+
+        // 删除数据库
+        function deleteDatabase(databaseId) {
+            if (confirm('确定要删除这个数据库配置吗？')) {
+                config.databaseConfigs = config.databaseConfigs.filter(d => d.id !== databaseId);
+                saveConfig();
+                renderDatabaseConfigs();
+                renderDatabaseSelection();
+            }
+        }
+
+        // 关闭数据库模态框
+        function closeDatabaseModal() {
+            document.getElementById('databaseModal').classList.add('hidden');
+            document.getElementById('databaseModal').classList.remove('flex');
+        }
+
+        // 测试数据库连接
+        async function testDatabaseConnection() {
+            const testData = {
+                host: document.getElementById('dbHost').value,
+                port: parseInt(document.getElementById('dbPort').value),
+                user: document.getElementById('dbUser').value,
+                password: document.getElementById('dbPassword').value,
+                database: document.getElementById('dbDatabase').value
+            };
+
+            try {
+                const response = await fetch('/api/test-connection', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(testData)
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    showNotification('连接测试成功', 'success');
+                } else {
+                    showNotification(`连接测试失败: ${result.error}`, 'error');
+                }
+
+            } catch (error) {
+                showNotification('连接测试失败', 'error');
+            }
+        }
+
+        // 格式化SQL
+        function formatSQL() {
+            const sqlEditor = document.getElementById('sqlEditor');
+            const sql = sqlEditor.value;
+
+            // 简单的SQL格式化
+            const formatted = sql
+                .replace(/\b(SELECT|FROM|WHERE|GROUP BY|ORDER BY|HAVING|LIMIT|JOIN|LEFT JOIN|RIGHT JOIN|INNER JOIN|ON|AS)\b/g, '\n$1')
+                .replace(/\b(AND|OR|NOT)\b/g, ' $1 ')
+                .replace(/,/g, ', ')
+                .replace(/\s+/g, ' ')
+                .trim();
+
+            sqlEditor.value = formatted;
+            sqlEditor.style.height = 'auto';
+            sqlEditor.style.height = Math.min(sqlEditor.scrollHeight, 400) + 'px';
+        }
+
+        // ---------------- SQL 模板 相关 ----------------
+        function renderSQLTemplates() {
+            const container = document.getElementById('sqlTemplates');
+            if (!container) return;
+            container.innerHTML = '';
+
+            const templates = (config && config.sqlTemplates) ? config.sqlTemplates : [];
+
+            templates.forEach(tpl => {
+                // 整体为灰色块，点击填入 SQL，右侧有编辑图标在同一块内
+                const card = document.createElement('div');
+                card.className = 'flex items-center bg-gray-100 px-3 py-1 rounded hover:bg-gray-200 text-sm';
+                card.title = tpl.sql;
+                card.style.cursor = 'pointer';
+                card.onclick = () => {
+                    const sqlEditor = document.getElementById('sqlEditor');
+                    sqlEditor.value = tpl.sql;
+                    sqlEditor.style.height = 'auto';
+                    sqlEditor.style.height = Math.min(sqlEditor.scrollHeight, 400) + 'px';
+                };
+
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'flex-1 text-gray-700';
+                nameSpan.textContent = tpl.name;
+
+                const editBtn = document.createElement('button');
+                editBtn.className = 'ml-2 px-2 py-1 text-sm text-gray-500 hover:text-primary';
+                editBtn.title = '编辑模板';
+                editBtn.innerHTML = '<i class="fa fa-edit"></i>';
+                editBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    openTemplateModal('edit', tpl.id);
+                };
+
+                card.appendChild(nameSpan);
+                card.appendChild(editBtn);
+                container.appendChild(card);
+            });
+
+            if (templates.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'text-sm text-gray-500';
+                empty.textContent = '暂无模板，点击管理模板添加。';
+                container.appendChild(empty);
+            }
+        }
+
+        function openTemplateModal(mode, templateId) {
+            document.getElementById('templateForm').reset();
+            document.getElementById('templateId').value = '';
+            document.getElementById('deleteTemplateBtn').classList.add('hidden');
+            document.getElementById('templateModalTitle').textContent = mode === 'add' ? '添加模板' : '编辑模板';
+
+            if (mode === 'edit' && templateId && config && config.sqlTemplates) {
+                const tpl = config.sqlTemplates.find(t => t.id === templateId);
+                if (tpl) {
+                    document.getElementById('templateId').value = tpl.id;
+                    document.getElementById('templateName').value = tpl.name;
+                    document.getElementById('templateSql').value = tpl.sql;
+                    document.getElementById('deleteTemplateBtn').classList.remove('hidden');
+                }
+            }
+
+            const modal = document.getElementById('templateModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeTemplateModal() {
+            const modal = document.getElementById('templateModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        // 保存模板（新建或编辑）
+        document.getElementById('templateForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('templateId').value;
+            const name = document.getElementById('templateName').value.trim();
+            const sql = document.getElementById('templateSql').value.trim();
+
+            if (!name || !sql) {
+                showNotification('模板名称与 SQL 内容不能为空', 'warning');
+                return;
+            }
+
+            const saveBtn = e.target.querySelector('button[type="submit"]');
+            const originalText = saveBtn.innerHTML;
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<i class="fa fa-spinner fa-spin mr-2"></i>保存中...';
+
+            try {
+                if (!config.sqlTemplates) config.sqlTemplates = [];
+
+                if (id) {
+                    const idx = config.sqlTemplates.findIndex(t => t.id === id);
+                    if (idx >= 0) {
+                        config.sqlTemplates[idx] = { id, name, sql };
+                    }
+                } else {
+                    const newId = 'tpl_' + Date.now();
+                    config.sqlTemplates.push({ id: newId, name, sql });
+                }
+
+                // 先保存到服务器，再从服务器重新加载配置以保证一致性
+                await saveConfig(false);
+                await loadConfig();
+                renderSQLTemplates();
+                closeTemplateModal();
+                showNotification('模板已保存', 'success');
+            } catch (err) {
+                console.error('保存模板失败', err);
+                showNotification('保存模板失败', 'error');
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = originalText;
+            }
+        });
+
+        function deleteTemplateConfirm() {
+            const id = document.getElementById('templateId').value;
+            if (!id) return;
+            if (!confirm('确定要删除此模板吗？')) return;
+            deleteTemplate(id);
+        }
+
+        async function deleteTemplate(templateId) {
+            if (!config.sqlTemplates) return;
+            // 删除按钮处理
+            const delBtn = document.getElementById('deleteTemplateBtn');
+            const originalText = delBtn.innerHTML;
+            delBtn.disabled = true;
+            delBtn.innerHTML = '<i class="fa fa-spinner fa-spin mr-2"></i>删除中...';
+
+            try {
+                config.sqlTemplates = config.sqlTemplates.filter(t => t.id !== templateId);
+                await saveConfig(false);
+                await loadConfig();
+                renderSQLTemplates();
+                closeTemplateModal();
+                showNotification('模板已删除', 'success');
+            } catch (err) {
+                console.error('删除模板失败', err);
+                showNotification('删除模板失败', 'error');
+            } finally {
+                delBtn.disabled = false;
+                delBtn.innerHTML = originalText;
+            }
+        }
+
+        // 清空SQL
+        function clearSQL() {
+            document.getElementById('sqlEditor').value = '';
+        }
+
+        // 加载查询历史
+        function loadQueryHistory() {
+            const history = JSON.parse(localStorage.getItem('queryHistory') || '[]');
+            queryHistory = history;
+            renderQueryHistory();
+        }
+
+        // 保存查询历史
+        function saveQueryHistory() {
+            // 只保留最近50条记录
+            if (queryHistory.length > 50) {
+                queryHistory = queryHistory.slice(0, 50);
+            }
+            localStorage.setItem('queryHistory', JSON.stringify(queryHistory));
+        }
+
+        // 渲染查询历史
+        function renderQueryHistory() {
+            const container = document.getElementById('historyList');
+            container.innerHTML = '';
+
+            if (queryHistory.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-12 text-gray-500">
+                        <i class="fa fa-history text-4xl mb-4"></i>
+                        <p>暂无查询历史记录</p>
+                    </div>
+                `;
+                return;
+            }
+
+            queryHistory.forEach(query => {
+                const card = document.createElement('div');
+                card.className = 'bg-gray-50 rounded-lg p-4 border border-gray-200';
+
+                const statusClass = {
+                    'running': 'bg-yellow-100 text-yellow-800',
+                    'completed': 'bg-green-100 text-green-800',
+                    'failed': 'bg-red-100 text-red-800'
+                };
+
+                const successCount = Object.values(query.results || {}).filter(r => r.status === 'success').length;
+                const failedCount = Object.values(query.results || {}).filter(r => r.status === 'failed').length;
+
+                card.innerHTML = `
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center space-x-3">
+                            <span class="font-mono text-sm text-gray-600">${query.id}</span>
+                            <span class="px-2 py-1 text-xs rounded-full ${statusClass[query.status] || 'bg-gray-100 text-gray-800'}">
+                                ${query.status === 'running' ? '执行中' : query.status === 'completed' ? '已完成' : '已失败'}
+                            </span>
+                        </div>
+                        <div class="text-sm text-gray-500">
+                            ${new Date(query.startTime).toLocaleString()}
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-3 gap-4 text-sm mb-3">
+                        <div class="text-center">
+                            <div class="font-medium text-gray-900">${query.databases?.length || 0}</div>
+                            <div class="text-gray-600">数据库</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="font-medium text-green-600">${successCount}</div>
+                            <div class="text-gray-600">成功</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="font-medium text-red-600">${failedCount}</div>
+                            <div class="text-gray-600">失败</div>
+                        </div>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button onclick="viewHistoryDetails('${query.id}')" class="px-3 py-1 text-xs bg-primary text-white rounded hover:bg-blue-700">
+                            查看详情
+                        </button>
+                        <button onclick="reRunQuery('${query.id}')" class="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200">
+                            重新执行
+                        </button>
+                        <button onclick="deleteHistoryItem('${query.id}')" class="px-3 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200">
+                            删除
+                        </button>
+                    </div>
+                `;
+
+                container.appendChild(card);
+            });
+        }
+
+        // 查看历史详情
+        function viewHistoryDetails(queryId) {
+            const query = queryHistory.find(q => q.id === queryId);
+            if (!query) return;
+
+            currentQueryId = queryId;
+            showQueryResults();
+            renderQueryResults(query.results);
+            switchTab('query');
+        }
+
+        // 重新执行查询
+        function reRunQuery(queryId) {
+            const query = queryHistory.find(q => q.id === queryId);
+            if (!query) return;
+
+            // 选择对应的数据库
+            document.querySelectorAll('.database-checkbox').forEach(checkbox => {
+                checkbox.checked = query.databases.includes(checkbox.getAttribute('data-id'));
+            });
+
+            executeQuery();
+        }
+
+        // 删除历史记录
+        function deleteHistoryItem(queryId) {
+            queryHistory = queryHistory.filter(q => q.id !== queryId);
+            saveQueryHistory();
+            renderQueryHistory();
+        }
+
+        // 搜索历史记录
+        function searchHistory() {
+            const searchTerm = document.getElementById('historySearch').value.toLowerCase();
+            const filter = document.getElementById('historyFilter').value;
+
+            let filteredHistory = queryHistory;
+
+            if (searchTerm) {
+                filteredHistory = filteredHistory.filter(query =>
+                    query.id.toLowerCase().includes(searchTerm) ||
+                    query.status.toLowerCase().includes(searchTerm)
+                );
+            }
+
+            if (filter !== 'all') {
+                filteredHistory = filteredHistory.filter(query => query.status === filter);
+            }
+
+            const container = document.getElementById('historyList');
+            container.innerHTML = '';
+
+            if (filteredHistory.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-12 text-gray-500">
+                        <i class="fa fa-search text-4xl mb-4"></i>
+                        <p>没有找到匹配的查询记录</p>
+                    </div>
+                `;
+                return;
+            }
+
+            filteredHistory.forEach(query => {
+                // 渲染逻辑与renderQueryHistory类似
+                const card = document.createElement('div');
+                card.className = 'bg-gray-50 rounded-lg p-4 border border-gray-200';
+
+                const statusClass = {
+                    'running': 'bg-yellow-100 text-yellow-800',
+                    'completed': 'bg-green-100 text-green-800',
+                    'failed': 'bg-red-100 text-red-800'
+                };
+
+                const successCount = Object.values(query.results || {}).filter(r => r.status === 'success').length;
+                const failedCount = Object.values(query.results || {}).filter(r => r.status === 'failed').length;
+
+                card.innerHTML = `
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center space-x-3">
+                            <span class="font-mono text-sm text-gray-600">${query.id}</span>
+                            <span class="px-2 py-1 text-xs rounded-full ${statusClass[query.status] || 'bg-gray-100 text-gray-800'}">
+                                ${query.status === 'running' ? '执行中' : query.status === 'completed' ? '已完成' : '已失败'}
+                            </span>
+                        </div>
+                        <div class="text-sm text-gray-500">
+                            ${new Date(query.startTime).toLocaleString()}
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-3 gap-4 text-sm mb-3">
+                        <div class="text-center">
+                            <div class="font-medium text-gray-900">${query.databases?.length || 0}</div>
+                            <div class="text-gray-600">数据库</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="font-medium text-green-600">${successCount}</div>
+                            <div class="text-gray-600">成功</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="font-medium text-red-600">${failedCount}</div>
+                            <div class="text-gray-600">失败</div>
+                        </div>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button onclick="viewHistoryDetails('${query.id}')" class="px-3 py-1 text-xs bg-primary text-white rounded hover:bg-blue-700">
+                            查看详情
+                        </button>
+                        <button onclick="reRunQuery('${query.id}')" class="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200">
+                            重新执行
+                        </button>
+                        <button onclick="deleteHistoryItem('${query.id}')" class="px-3 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200">
+                            删除
+                        </button>
+                    </div>
+                `;
+
+                container.appendChild(card);
+            });
+        }
+
+        // 显示通知
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg z-50 transition-all duration-300 transform translate-x-full`;
+
+            const colors = {
+                success: 'bg-green-500 text-white',
+                error: 'bg-red-500 text-white',
+                warning: 'bg-yellow-500 text-white',
+                info: 'bg-blue-500 text-white'
+            };
+
+            const icons = {
+                success: 'fa-check-circle',
+                error: 'fa-times-circle',
+                warning: 'fa-exclamation-triangle',
+                info: 'fa-info-circle'
+            };
+
+            notification.className += ` ${colors[type]}`;
+            notification.innerHTML = `
+                <div class="flex items-center space-x-2">
+                    <i class="fa ${icons[type]}"></i>
+                    <span>${message}</span>
+                </div>
+            `;
+
+            document.body.appendChild(notification);
+
+            // 显示动画
+            setTimeout(() => {
+                notification.classList.remove('translate-x-full');
+            }, 100);
+
+            // 自动隐藏
+            setTimeout(() => {
+                notification.classList.add('translate-x-full');
+                setTimeout(() => {
+                    document.body.removeChild(notification);
+                }, 300);
+            }, 3000);
+        }
+
+        // 清空服务器端日志（error.log / combined.log）
+        async function clearLogs() {
+            if (!confirm('确定要清空服务器日志（error.log 和 combined.log）吗？')) return;
+
+            const btn = document.getElementById('clearLogsBtn');
+            btn.disabled = true;
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="fa fa-spinner fa-spin mr-1"></i>清空中...';
+
+            try {
+                const resp = await fetch('/api/clear-logs', { method: 'POST' });
+                const result = await resp.json();
+                if (result.success) {
+                    showNotification('日志已清空', 'success');
+                } else {
+                    showNotification(result.message || '清空日志失败', 'error');
+                }
+            } catch (error) {
+                console.error('清空日志失败', error);
+                showNotification('清空日志失败', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', initApp);
+
+        // 防止页面意外关闭
+        window.addEventListener('beforeunload', (e) => {
+            if (currentQueryId && queryHistory.find(q => q.id === currentQueryId && q.status === 'running')) {
+                e.preventDefault();
+                e.returnValue = '查询正在执行中，确定要离开页面吗？';
+                return e.returnValue;
+            }
+        });
+    </script>
+</body>
+
+</html>
