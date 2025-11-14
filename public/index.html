@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>多数据库查询机器人</title>
+    <title>多数据库查询</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
@@ -63,16 +63,17 @@
                 <div class="flex items-center">
                     <div class="flex-shrink-0 flex items-center">
                         <i class="fa fa-database text-primary text-2xl mr-3"></i>
-                        <h1 class="text-xl font-bold text-gray-900">多数据库查询机器人</h1>
+                        <h1 class="text-xl font-bold text-gray-900">多数据库查询</h1>
                     </div>
                 </div>
                 <div class="flex items-center space-x-4">
-                    <button id="themeToggle" class="p-2 rounded-lg hover:bg-gray-100 transition-colors">
-                        <i class="fa fa-moon-o text-gray-600"></i>
-                    </button>
+                    <a id="themeToggle" href="https://github.com/jjq0425/" target="_blank" rel="noopener noreferrer"
+                        title="打开 GitHub 主页" class="p-2 rounded-lg hover:bg-gray-100 transition-colors">
+                        <i class="fa fa-github text-gray-700 text-lg"></i>
+                    </a>
                     <button id="clearLogsBtn" onclick="clearLogs()" title="清空日志文件"
                         class="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors text-sm">
-                        <i class="fa fa-trash mr-1"></i>清空日志
+                        <i class="fa fa-trash mr-1"></i>清空后台日志文件
                     </button>
                     <div class="text-sm text-gray-600">
                         <span id="connectionStatus" class="inline-flex items-center">
@@ -107,6 +108,19 @@
 
         <!-- 执行查询标签页 -->
         <div id="queryTabContent" class="tab-content">
+            <!-- 警告框 -->
+            <div role="alert" class="mb-6 p-4 rounded-lg bg-yellow-50 border-l-4 border-yellow-400">
+                <div class="flex items-start">
+                    <i class="fa fa-exclamation-triangle text-yellow-600 mr-3 mt-0.5"></i>
+                    <div class="text-sm text-yellow-800">
+                        <p class="font-medium mb-1">注意</p>
+                        <ol class="list-decimal list-inside space-y-1">
+                            <li>所有 SQL 请进行 code review，避免长时间占用查询。必要时请使用专业数据库查询软件，如 DataGrip 或相关多数据库管理软件/框架。</li>
+                            <li>本项目仅供测试使用，不对生产环境做任何质量保证。</li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
             <!-- 查询控制面板 -->
             <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
                 <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-6">
