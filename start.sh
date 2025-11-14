@@ -14,9 +14,9 @@ if ! command -v node &> /dev/null; then
 fi
 
 # 检查npm是否安装
-if ! command -v npm &> /dev/null; then
-    echo "❌ 错误：npm 未安装"
-    echo "npm通常随Node.js一起安装"
+if ! command -v yarn &> /dev/null; then
+    echo "❌ 错误：yarn 未安装"
+    echo "请先安装yarn: https://yarnpkg.com/"
     exit 1
 fi
 
