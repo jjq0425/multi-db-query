@@ -645,12 +645,12 @@ ORDER BY count DESC;`
           meesage += '执行自定义通知脚本失败';
         }
 
-        meesage += '\n-----------------------\n'
+        meesage += '\n-----------------------\n\n'
       }
 
       // 默认消息构建（当自定义脚本没有产出内容时）
 
-      meesage += `## 数据库查询结果\n`;
+      meesage += `\n\n## 数据库查询结果\n`;
       meesage += `queryId >> ${queryRecord.id}  \n`;
       meesage += `| 数据库 | 行数 |  \n`;
       for (const dbId in queryRecord.results) {
