@@ -7,6 +7,7 @@ const { v4: uuidv4 } = require('uuid');
 const winston = require('winston');
 const fs = require('fs').promises;
 const path = require('path');
+const vm = require('vm');
 
 // 配置日志
 const logger = winston.createLogger({
@@ -214,7 +215,7 @@ ORDER BY count DESC;`
         // 发送任务级飞书通知（优先使用任务指定 webhook，否则使用全局 webhook）
         const webhook = task.feishuWebhook && task.feishuWebhook.length > 0 ? task.feishuWebhook : (this.config.feishuWebhook || '');
         if (webhook) {
-          await this.sendFeishuNotificationToWebhookSchedual(queryRecord, webhook, task.name);
+          await this.sendFeishuNotificationToWebhookSchedual(queryRecord, webhook, task.name, task.notificationScript || null);
         }
 
       } catch (error) {
@@ -282,10 +283,11 @@ ORDER BY count DESC;`
   }
 
   // 针对定时任务发送飞书通知（使用指定 webhook）
-  async sendFeishuNotificationToWebhookSchedual(queryRecord, webhookUrl, taskName) {
+  async sendFeishuNotificationToWebhookSchedual(queryRecord, webhookUrl, taskName, customJs = null) {
     try {
-      console.log('发送飞书通知', queryRecord);
-      this.sendFeishuNotification(queryRecord, webhookUrl, true);
+      console.log('发送飞书通知 (schedule)', queryRecord);
+      // 将自定义 JS 代码传入 sendFeishuNotification
+      this.sendFeishuNotification(queryRecord, webhookUrl, true, customJs);
     } catch (error) {
       logger.error('任务通知发送异常', error);
     }
@@ -300,7 +302,8 @@ ORDER BY count DESC;`
     // 更新配置
     this.app.post('/api/config', async (req, res) => {
       try {
-        this.config = { ...this.config, ...req.body };
+        // 合并默认配置、当前配置和前端提交，避免某些字段被意外删除或回退到错误值
+        this.config = { ...this.getDefaultConfig(), ...this.config, ...req.body };
         await this.saveConfig();
         res.json({ success: true, message: '配置更新成功' });
       } catch (error) {
@@ -614,14 +617,39 @@ ORDER BY count DESC;`
     });
   }
 
-  async sendFeishuNotification(queryRecord, webhook = this.config.feishuWebhook, isScheduledTask = false) {
+  async sendFeishuNotification(queryRecord, webhook = this.config.feishuWebhook, isScheduledTask = false, customJs = null) {
     try {
       console.log('发送飞书通知', queryRecord);
       var meesage = '';
-      // 将queryRecord的内容转换为markdown格式
 
-      // 如果某个数据查询的行大于15，则只显示前15行，其他省略（增加一列...）
-      // 将上述json变为markdown格式
+      // 如果提供了自定义 JS，则在 vm 沙箱执行，允许用户返回字符串或对象 { content, webhook }
+      if (customJs && typeof customJs === 'string' && customJs.trim().length > 0) {
+        meesage += '自定义脚本执行结果：\n'
+        try {
+          const sandbox = { queryRecord, result: null, console };
+          vm.createContext(sandbox);
+          const wrapped = `result = (function(queryRecord){\n${customJs}\n})(queryRecord);`;
+          vm.runInContext(wrapped, sandbox, { timeout: 2000 });
+          const userResult = sandbox.result;
+          if (typeof userResult === 'string') {
+            meesage += userResult;
+          } else if (userResult && typeof userResult === 'object') {
+            if (userResult.webhook) webhook = userResult.webhook;
+            if (userResult.content) meesage += userResult.content;
+            else if (userResult.msg) meesage += userResult.msg;
+            else meesage += JSON.stringify(userResult);
+          }
+        } catch (vmErr) {
+          logger.error('执行自定义通知脚本失败', vmErr);
+          // fallback to default message
+          meesage += '执行自定义通知脚本失败';
+        }
+
+        meesage += '\n-----------------------\n'
+      }
+
+      // 默认消息构建（当自定义脚本没有产出内容时）
+
       meesage += `## 数据库查询结果\n`;
       meesage += `queryId >> ${queryRecord.id}  \n`;
       meesage += `| 数据库 | 行数 |  \n`;
@@ -636,7 +664,6 @@ ORDER BY count DESC;`
         else if (db.status === 'failed') {
           meesage += `| ${db.database} | 查询失败 | \n`;
         }
-
       }
       meesage += `\n`;
       meesage += `数据库具体数据——\n`;
@@ -645,12 +672,9 @@ ORDER BY count DESC;`
         const db = queryRecord.results[dbId];
         meesage += `### ${db.dbInfo.host}\n`;
         if (db.status === 'success') {
-
-          // 列头为keys
           const keys = Object.keys(db.results[0] || {});
           meesage += `| ${keys.join(' | ')} |\n`;
           meesage += `| ${keys.map(() => '---').join(' | ')} |\n`;
-
           const displayRows = db.results.length > 15 ? db.results.slice(0, 15) : db.results;
           displayRows.forEach(row => {
             const values = keys.map(key => row[key]);
@@ -659,29 +683,36 @@ ORDER BY count DESC;`
           if (db.results.length > 15) {
             meesage += `| ... | ... |\n`;
           }
-          meesage += `返回的行数：${db.rowCount}`
+          meesage += `返回的行数：${db.rowCount}`;
           meesage += `查询用时：${db.executionTime} 毫秒\n`;
           meesage += `开始时间：${db.startTime}\n`;
           meesage += `结束时间：${db.endTime}\n`;
           meesage += `\n`;
-
-
         } else if (db.status === 'failed') {
           meesage += ` ❌❌ 查询失败 ❌❌ \n`;
         }
       }
 
 
-
       const content = {
-        msg: meesage,
+        "msg_type": "interactive",
+        "card": {
+          "elements": [{
+            "tag": "div",
+            "text": {
+              "content": meesage,
+              "tag": "lark_md"
+            }
+          }]
+        }
       };
 
-      const response = await fetch(this.config.feishuWebhook, {
+      const response = await fetch(webhook, {
         method: 'POST',
         body: JSON.stringify(content),
         timeout: 30000
       });
+      console.log('飞书通知发送结果', response);
 
       if (response.ok) {
         logger.info('飞书通知发送成功');

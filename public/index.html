@@ -304,6 +304,12 @@
                                     min="30" max="3600" value="600">
                             </div>
                             <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">调度器检查间隔 (秒)</label>
+                                <input type="number" id="schedulerIntervalSeconds"
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                                    min="5" max="3600" value="30">
+                            </div>
+                            <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">最大并发连接数</label>
                                 <input type="number" id="maxConnections"
                                     class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
@@ -510,7 +516,7 @@
     </div>
     <!-- 定时任务 模态框 -->
     <div id="scheduledTaskModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
-        <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4">
+        <div class="bg-white rounded-xl shadow-2xl max-w-4xl w-full mx-4">
             <div class="p-6">
                 <div class="flex items-center justify-between mb-4">
                     <h3 class="text-lg font-semibold text-gray-900" id="scheduledModalTitle">添加定时任务</h3>
@@ -543,6 +549,12 @@
                             class="w-full px-4 py-2 border border-gray-300 rounded-lg font-mono text-sm"></textarea>
                     </div>
                     <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">自定义通知 JS（可选）</label>
+                        <textarea id="scheduledTaskJs" rows="6"
+                            placeholder="接收参数：queryRecord，返回字符串或对象：{ content: '...', webhook: '...' }"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg font-mono text-sm"></textarea>
+                    </div>
+                    <div class="mb-4">
                         <label class="block text-sm font-medium text-gray-700 mb-2">飞书 Webhook（可选，若不填使用全局
                             webhook）</label>
                         <input id="scheduledTaskWebhook" type="text"
@@ -556,9 +568,16 @@
                     <div class="flex justify-end space-x-3">
                         <button type="button" onclick="deleteScheduledTaskConfirm()" id="deleteScheduledTaskBtn"
                             class="px-4 py-2 bg-red-100 text-red-700 rounded-lg hidden">删除任务</button>
+                        <button type="button" onclick="testScheduledTaskJs()"
+                            class="px-4 py-2 bg-yellow-400 text-white rounded-lg">测试脚本</button>
                         <button type="submit" class="px-4 py-2 bg-primary text-white rounded-lg">保存任务</button>
                         <button type="button" onclick="closeScheduledTaskModal()"
                             class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg">取消</button>
+                    </div>
+                    <div class="mt-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">脚本测试结果</label>
+                        <pre id="scheduledTaskJsTestResult"
+                            class="whitespace-pre-wrap bg-gray-50 border border-gray-200 rounded p-3 text-sm text-gray-800 max-h-48 overflow-auto"></pre>
                     </div>
                 </form>
             </div>
@@ -1406,6 +1425,7 @@
 
             document.getElementById('feishuWebhook').value = config.feishuWebhook || '';
             document.getElementById('queryTimeout').value = config.queryTimeout ? config.queryTimeout / 1000 : 600;
+            document.getElementById('schedulerIntervalSeconds').value = config.schedulerIntervalSeconds || 30;
             document.getElementById('maxConnections').value = config.maxConnections || 5;
             // 渲染 SQL 模板按钮
             renderSQLTemplates();
@@ -1428,6 +1448,7 @@
                     ...config,
                     feishuWebhook: document.getElementById('feishuWebhook').value,
                     queryTimeout: parseInt(document.getElementById('queryTimeout').value) * 1000,
+                    schedulerIntervalSeconds: parseInt(document.getElementById('schedulerIntervalSeconds').value) || 30,
                     maxConnections: parseInt(document.getElementById('maxConnections').value)
                 };
 
@@ -1817,6 +1838,7 @@
                 document.getElementById('scheduledTaskTimes').value = Array.isArray(task.scheduleTimes) ? task.scheduleTimes.join(',') : (task.scheduleTime || '');
                 document.getElementById('scheduledTaskSql').value = task.sql || '';
                 document.getElementById('scheduledTaskWebhook').value = task.feishuWebhook || '';
+                document.getElementById('scheduledTaskJs').value = task.notificationScript || '';
                 document.getElementById('scheduledTaskDisabled').checked = !!task.disabled;
                 // select dbs
                 const ids = task.dbIds || [];
@@ -1834,6 +1856,37 @@
             modal.classList.remove('flex');
         }
 
+        // 测试用户输入的自定义 JS（在浏览器中运行）
+        // 测试用的 queryRecord 来自用户请求
+        function testScheduledTaskJs() {
+            const code = document.getElementById('scheduledTaskJs').value || '';
+            const out = document.getElementById('scheduledTaskJsTestResult');
+            out.textContent = '';
+            if (!code.trim()) {
+                out.textContent = '没有脚本可测试';
+                return;
+            }
+
+            // 测试用的 queryRecord（固定样例）
+            const testRecord = { "id": "cc75ed24-a25b-4cae-b9e0-1421708152aa", "status": "completed", "startTime": "2025-11-15T05:32:22.570Z", "databases": ["db1"], "results": { "db1": { "status": "success", "database": "数据库1", "databaseId": "db1", "dbInfo": { "id": "db1", "name": "数据库1", "host": "192.168.1.1", "port": 3306, "database": "1", "user": "root", "password": "", "enabled": true }, "startTime": "2025-11-15T05:32:23.777Z", "endTime": "2025-11-15T05:32:25.205Z", "executionTime": 1428, "results": [{ "section": "1", "count": 693 }, { "section": "2", "count": 1 }, { "section": "3", "count": 18 }, { "section": "4", "count": 16 }], "rowCount": 4 } }, "endTime": "2025-11-15T05:32:25.207Z" };
+
+            try {
+                // 将用户代码包装为函数并执行，限制在 try/catch 中
+                const wrapped = `(function(queryRecord){\n${code}\n})(testRecord)`;
+                // 使用 new Function 以便用户可直接 return 或使用语句
+                const fn = new Function('testRecord', `return (function(queryRecord){\n${code}\n})(testRecord);`);
+                const result = fn(testRecord);
+                if (typeof result === 'object') {
+                    out.textContent = JSON.stringify(result, null, 2);
+                } else {
+                    out.textContent = String(result);
+                }
+            } catch (err) {
+                out.textContent = '执行脚本出错：' + (err && err.message ? err.message : String(err));
+                console.error('测试脚本错误', err);
+            }
+        }
+
         // 表单提交 - 保存任务到 config.scheduledTasks 并调用 saveConfig()
         document.getElementById('scheduledTaskForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -1847,10 +1900,11 @@
             const dbIds = Array.from(dbSelect.selectedOptions).map(o => o.value);
 
             const times = timesRaw.split(',').map(s => s.trim()).filter(Boolean);
+            const notificationJs = document.getElementById('scheduledTaskJs').value || '';
 
             if (!config.scheduledTasks) config.scheduledTasks = [];
 
-            const task = { id: `t_${Date.now()}`, name, scheduleTimes: times, dbIds, sql, feishuWebhook: webhook, disabled };
+            const task = { id: `t_${Date.now()}`, name, scheduleTimes: times, dbIds, sql, feishuWebhook: webhook, notificationScript: notificationJs, disabled };
 
             if (idx === '') {
                 config.scheduledTasks.push(task);
